@@ -129,3 +129,24 @@ func TestVersionFlag(t *testing.T) {
 		t.Errorf("output file should not exist when -version flag is used")
 	}
 }
+
+func TestPrivateKeyEncryptedNoPassphrase(t *testing.T) {
+	// Ensure env var is not set
+	os.Unsetenv("SSH_TO_AGE_PASSPHRASE")
+
+	tempdir := TempDir(t)
+	defer os.RemoveAll(tempdir)
+	out := path.Join(tempdir, "out")
+
+	err := convertKeys([]string{"ssh-to-age", "-private-key", "-i", Asset("id_ed25519_passphrase"), "-o", out})
+
+	// In test environment (no TTY), should fail with clear error
+	if err == nil {
+		t.Error("expected error for encrypted key without passphrase")
+	}
+
+	// Verify error message mentions passphrase
+	if !strings.Contains(err.Error(), "passphrase") {
+		t.Errorf("error should mention passphrase, got: %v", err)
+	}
+}

@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	sshage "github.com/Mic92/ssh-to-age"
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/term"
 )
 
 var version = "dev"
@@ -41,6 +43,33 @@ func writeKey(writer io.Writer, key *string) error {
 	}
 	_, err := writer.Write([]byte("\n"))
 	return err
+}
+
+// readPassphraseFromTerminal prompts for a passphrase on the terminal.
+// It tries /dev/tty first (works even when stdin is used for key input),
+// then falls back to stdin if available.
+func readPassphraseFromTerminal() ([]byte, error) {
+	// Try /dev/tty first - this works even if stdin is piped
+	tty, err := os.Open("/dev/tty")
+	if err == nil {
+		defer tty.Close()
+		if term.IsTerminal(int(tty.Fd())) {
+			fmt.Fprint(os.Stderr, "Enter passphrase: ")
+			pass, err := term.ReadPassword(int(tty.Fd()))
+			fmt.Fprintln(os.Stderr)
+			return pass, err
+		}
+	}
+
+	// Fall back to stdin
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		fmt.Fprint(os.Stderr, "Enter passphrase: ")
+		pass, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Fprintln(os.Stderr)
+		return pass, err
+	}
+
+	return nil, errors.New("cannot prompt for passphrase: no terminal available. Set SSH_TO_AGE_PASSPHRASE environment variable")
 }
 
 func convertKeys(args []string) error {
@@ -82,8 +111,21 @@ func convertKeys(args []string) error {
 		keyPassphrase := os.Getenv("SSH_TO_AGE_PASSPHRASE")
 
 		key, _, err = sshage.SSHPrivateKeyToAge(sshKey, []byte(keyPassphrase))
+
+		// If key is encrypted and no passphrase was provided, try interactive prompt
 		if err != nil {
-			return fmt.Errorf("failed to convert '%s': %w", sshKey, err)
+			var passphraseErr *ssh.PassphraseMissingError
+			if errors.As(err, &passphraseErr) && keyPassphrase == "" {
+				passphrase, promptErr := readPassphraseFromTerminal()
+				if promptErr != nil {
+					return fmt.Errorf("failed to read passphrase: %w", promptErr)
+				}
+				key, _, err = sshage.SSHPrivateKeyToAge(sshKey, passphrase)
+			}
+		}
+
+		if err != nil {
+			return fmt.Errorf("failed to convert private key: %w", err)
 		}
 		if err := writeKey(writer, key); err != nil {
 			return fmt.Errorf("failed to write key: %w", err)
