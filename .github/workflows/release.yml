@@ -1,55 +1,22 @@
 name: Release
-
 on:
-  workflow_dispatch:
   push:
-    tags:
-      - "*"
+    tags: ["*"]
 
 jobs:
-  build-and-upload:
+  release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Install Nix
-        uses: cachix/install-nix-action@v30
+      - uses: actions/checkout@v4
         with:
-          extra_nix_config: |
-            extra-substituters = https://cache.thalheim.io
-            extra-trusted-public-keys = cache.thalheim.io-1:R7msbosLEZKrxk/lKxf9BTjOOH7Ax3H0Qj0/6wiHOgc=
-
-      - name: Build cross-platform binaries
-        run: |
-          echo "Building cross-platform binaries..."
-          nix build .#checks.x86_64-linux.cross-build --log-format bar-with-logs
-
-      - name: Prepare release assets
-        run: |
-          mkdir -p release-assets
-          cp result/* release-assets/
-          cd release-assets
-
-          # List what we're uploading
-          echo "Files to upload:"
-          ls -la
-
-      - name: Upload Release Assets
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          cd release-assets
-
-          # Get the tag name from the ref
-          TAG_NAME="${GITHUB_REF#refs/tags/}"
-
-          # Create release if it doesn't exist
-          gh release create "$TAG_NAME" --title "$TAG_NAME" --notes "" 2>/dev/null || true
-
-          # Upload all binaries and checksums at once
-          gh release upload "$TAG_NAME" * \
-            --repo "${{ github.repository }}" \
-            --clobber
