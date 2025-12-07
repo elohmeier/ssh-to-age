@@ -150,3 +150,39 @@ func TestPrivateKeyEncryptedNoPassphrase(t *testing.T) {
 		t.Errorf("error should mention passphrase, got: %v", err)
 	}
 }
+
+func TestAutoDetectPrivateKey(t *testing.T) {
+	tempdir := TempDir(t)
+	defer os.RemoveAll(tempdir)
+	out := path.Join(tempdir, "out")
+
+	// Note: no -private-key flag, should auto-detect
+	err := convertKeys([]string{"ssh-to-age", "-i", Asset("id_ed25519"), "-o", out})
+	ok(t, err)
+
+	rawPrivateKey, err := ioutil.ReadFile(out)
+	ok(t, err)
+	privateKey := strings.TrimSuffix(string(rawPrivateKey), "\n")
+
+	// Verify it's a valid age private key
+	_, err = age.ParseX25519Identity(privateKey)
+	ok(t, err)
+}
+
+func TestAutoDetectPublicKey(t *testing.T) {
+	tempdir := TempDir(t)
+	defer os.RemoveAll(tempdir)
+	out := path.Join(tempdir, "out")
+
+	// No -private-key flag, should auto-detect as public key
+	err := convertKeys([]string{"ssh-to-age", "-i", Asset("id_ed25519.pub"), "-o", out})
+	ok(t, err)
+
+	rawPublicKey, err := ioutil.ReadFile(out)
+	ok(t, err)
+	pubKey := strings.TrimSuffix(string(rawPublicKey), "\n")
+
+	// Verify it's a valid age public key
+	_, err = age.ParseX25519Recipient(pubKey)
+	ok(t, err)
+}

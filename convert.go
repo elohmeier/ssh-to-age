@@ -94,11 +94,13 @@ func SSHPrivateKeyToAge(sshKey, passphrase []byte) (*string, *string, error) {
 }
 
 func SSHPublicKeyToAge(sshKey []byte) (*string, error) {
-	var err error
 	var pk ssh.PublicKey
-	if strings.HasPrefix(string(sshKey), "ssh-") {
-		pk, _, _, _, err = ssh.ParseAuthorizedKey(sshKey)
-	} else {
+	var err error
+
+	// Try parsing as authorized_keys format first (most common for single keys)
+	pk, _, _, _, err = ssh.ParseAuthorizedKey(sshKey)
+	if err != nil {
+		// Fall back to known_hosts format (hostname prefix)
 		_, _, pk, _, _, err = ssh.ParseKnownHosts(sshKey)
 	}
 	if err != nil {
